@@ -8,6 +8,7 @@ from datetime import datetime
 from rich.console import Console
 from rich.table import Table
 
+from .cart import add_to_cart, open_product_page
 from .config import MonitorConfig, WatchEntry, load_watches, save_watches
 from .notifier import send_notifications
 from .scrapers import ProductResult, filter_results, search_product
@@ -32,15 +33,18 @@ def build_status_table(watch_results: dict[str, list[ProductResult]], watches: l
     table.add_column("Product Found", min_width=30, max_width=60)
     table.add_column("Price", min_width=8)
     table.add_column("Status", min_width=12)
+    table.add_column("Auto-Cart", min_width=8)
 
     for watch in watches:
+        cart_mode = watch.auto_cart if watch.auto_cart != "off" else "[dim]off[/dim]"
+
         if not watch.enabled:
-            table.add_row(watch.query, "[dim]-[/dim]", "[dim]DISABLED[/dim]", "-", "-")
+            table.add_row(watch.query, "[dim]-[/dim]", "[dim]DISABLED[/dim]", "-", "-", cart_mode)
             continue
 
         results = watch_results.get(watch.query, [])
         if not results:
-            table.add_row(watch.query, "-", "[dim]No results found[/dim]", "-", "[dim]--[/dim]")
+            table.add_row(watch.query, "-", "[dim]No results found[/dim]", "-", "[dim]--[/dim]", cart_mode)
             continue
 
         for r in results:
@@ -49,7 +53,7 @@ def build_status_table(watch_results: dict[str, list[ProductResult]], watches: l
                 status = "[bold green]IN STOCK[/bold green]"
             else:
                 status = f"[red]{r.availability_text}[/red]"
-            table.add_row(watch.query, r.retailer, r.name[:60], price_str, status)
+            table.add_row(watch.query, r.retailer, r.name[:60], price_str, status, cart_mode)
 
     return table
 
@@ -96,6 +100,16 @@ def run_monitor(config: MonitorConfig, one_shot: bool = False):
                     console.print(f"[green]    {result.retailer} - ${result.price or '?'}[/green]")
                     console.print(f"[green]    {result.url}[/green]\n")
                     send_notifications(result, config)
+
+                    # Auto-cart action
+                    if watch.auto_cart != "off":
+                        console.print(f"[bold cyan]  Cart mode: {watch.auto_cart}[/bold cyan]")
+                        cart_result = add_to_cart(result, mode=watch.auto_cart)
+                        if cart_result["success"]:
+                            console.print(f"[bold green]  {cart_result['message']}[/bold green]")
+                        else:
+                            console.print(f"[yellow]  {cart_result['message']}[/yellow]")
+
                     prev.add(key)
                 elif not result.available:
                     prev.discard(key)

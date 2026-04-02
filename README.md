@@ -4,7 +4,7 @@ Search for any product by name (partial or full) across major retailers and get 
 
 ## How It Works
 
-You give it a product name like `"RTX 4090"` or `"PlayStation 5"`. It searches Amazon, Best Buy, Walmart, Target, and Newegg (or any custom URL you provide), checks if the product is available for purchase, and alerts you via desktop notification, sound, and/or email the moment it finds stock.
+You give it a product name like `"RTX 4090"` or `"PlayStation 5"`. It searches Amazon, Best Buy, Walmart, Target, and Newegg (or any custom URL you provide), checks if the product is available for purchase, and alerts you via desktop notification, sound, and/or email the moment it finds stock. It can even **automatically add the item to your cart** using browser automation.
 
 ## Quick Start
 
@@ -17,6 +17,9 @@ product-monitor add "RTX 4090"
 
 # Add with a price cap and specific retailers
 product-monitor add "PlayStation 5" --max-price 499.99 --retailers amazon bestbuy walmart
+
+# Auto add-to-cart when found in stock
+product-monitor add "RTX 5090" --auto-cart auto
 
 # See what you're watching
 product-monitor list
@@ -66,6 +69,36 @@ product-monitor add "Limited Edition Sneakers" --retailers "https://example.com/
 - **Target** (`target`)
 - **Newegg** (`newegg`)
 - **Any URL** - pass a full URL as a retailer to monitor any website
+
+## Auto Add-to-Cart
+
+When a product is found in stock, the monitor can automatically take action using browser automation (Selenium):
+
+| Mode | What it does |
+|------|-------------|
+| `off` | Nothing (default) - just notifies you |
+| `open` | Opens the product page in your browser |
+| `prompt` | Opens the page and highlights the "Add to Cart" button in green |
+| `auto` | Attempts to click "Add to Cart" automatically |
+
+```bash
+# Just open the page when found
+product-monitor add "PS5" --auto-cart open
+
+# Highlight the button for me
+product-monitor add "RTX 4090" --auto-cart prompt
+
+# Full auto - click Add to Cart for me
+product-monitor add "AirPods Pro" --auto-cart auto --max-price 199.99
+```
+
+Install the browser automation dependencies:
+
+```bash
+pip install -e ".[cart]"
+```
+
+**Note:** `open` mode works without Selenium (uses your default browser). `prompt` and `auto` modes require Selenium + Chrome/ChromeDriver. If Selenium isn't installed, the monitor falls back to opening the page in your browser.
 
 ## Notifications
 

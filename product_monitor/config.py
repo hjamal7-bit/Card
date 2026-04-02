@@ -43,6 +43,7 @@ class WatchEntry:
     query: str  # The product name / search term (partial or full)
     retailers: list[str] = field(default_factory=lambda: ["amazon", "bestbuy", "walmart", "target", "newegg"])
     max_price: Optional[float] = None  # Optional price cap
+    auto_cart: str = "off"  # "off", "open", "prompt", or "auto"
     enabled: bool = True
     last_results: list[dict] = field(default_factory=list)
 

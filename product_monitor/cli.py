@@ -20,6 +20,7 @@ from .monitor import run_monitor
 console = Console()
 
 VALID_RETAILERS = ["amazon", "bestbuy", "walmart", "target", "newegg"]
+VALID_CART_MODES = ["off", "open", "prompt", "auto"]
 
 
 def cmd_add(args):
@@ -42,10 +43,16 @@ def cmd_add(args):
         else:
             console.print(f"[yellow]Unknown retailer '{r}', skipping. Valid: {', '.join(VALID_RETAILERS)}[/yellow]")
 
+    cart_mode = args.auto_cart or "off"
+    if cart_mode not in VALID_CART_MODES:
+        console.print(f"[red]Invalid cart mode '{cart_mode}'. Valid: {', '.join(VALID_CART_MODES)}[/red]")
+        return
+
     watch = WatchEntry(
         query=args.query,
         retailers=final_retailers,
         max_price=args.max_price,
+        auto_cart=cart_mode,
     )
     watches.append(watch)
     save_watches(watches)
@@ -54,6 +61,8 @@ def cmd_add(args):
     console.print(f"[green]Now watching for '{args.query}' on: {retailer_str}[/green]")
     if args.max_price:
         console.print(f"[green]  Max price: ${args.max_price:.2f}[/green]")
+    if cart_mode != "off":
+        console.print(f"[green]  Auto-cart: {cart_mode}[/green]")
 
 
 def cmd_remove(args):
@@ -84,6 +93,7 @@ def cmd_list(args):
     table.add_column("Search Query", style="bold")
     table.add_column("Retailers")
     table.add_column("Max Price")
+    table.add_column("Auto-Cart")
     table.add_column("Enabled")
     table.add_column("Last Results")
 
@@ -94,7 +104,8 @@ def cmd_list(args):
         n_results = len(w.last_results)
         available = sum(1 for r in w.last_results if r.get("available"))
         results_str = f"{available} available / {n_results} found" if n_results else "not checked yet"
-        table.add_row(str(i), w.query, retailers, price, enabled, results_str)
+        cart = w.auto_cart if w.auto_cart != "off" else "-"
+        table.add_row(str(i), w.query, retailers, price, cart, enabled, results_str)
 
     console.print(table)
 
@@ -164,6 +175,17 @@ def main():
         help=f"Retailers to search (default: all). Options: {', '.join(VALID_RETAILERS)}. Also accepts URLs.",
     )
     add_p.add_argument("--max-price", "-p", type=float, help="Maximum acceptable price")
+    add_p.add_argument(
+        "--auto-cart", "-c",
+        choices=VALID_CART_MODES, default="off",
+        help=(
+            "Auto add-to-cart mode when product is found in stock. "
+            "'open' = open page in browser, "
+            "'prompt' = open page and highlight the button, "
+            "'auto' = attempt to click Add to Cart automatically, "
+            "'off' = disabled (default)"
+        ),
+    )
 
     # --- remove ---
     rm_p = subparsers.add_parser("remove", help="Remove a product from watch list")
