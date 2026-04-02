@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "product-monitor"
+version = "1.0.0"
+description = "Monitor product availability on any website and get instant notifications"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "plyer>=2.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "responses>=0.24.0"]
+
+[project.scripts]
+product-monitor = "product_monitor.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["product_monitor*"]
