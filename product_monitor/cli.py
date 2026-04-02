@@ -206,6 +206,17 @@ def cmd_profiles(args):
         console.print("[yellow]No login profiles saved yet. Use 'product-monitor login <retailer>' first.[/yellow]")
 
 
+def cmd_web(args):
+    """Start the web dashboard."""
+    try:
+        from .web import run_web
+    except ImportError:
+        console.print("[red]Flask not installed. Install with: pip install flask[/red]")
+        return
+    console.print(f"[green]Starting web dashboard on http://{args.host}:{args.port}[/green]")
+    run_web(host=args.host, port=args.port)
+
+
 def cmd_config(args):
     """View or update configuration."""
     config = load_config()
@@ -298,6 +309,11 @@ def main():
     prof_p.add_argument("--clear", metavar="RETAILER", help="Clear saved profile for a specific retailer")
     prof_p.add_argument("--clear-all", action="store_true", help="Clear all saved profiles")
 
+    # --- web ---
+    web_p = subparsers.add_parser("web", help="Start the web dashboard")
+    web_p.add_argument("--port", type=int, default=5000, help="Port to run on (default: 5000)")
+    web_p.add_argument("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+
     # --- config ---
     cfg_p = subparsers.add_parser("config", help="View or update settings")
     cfg_p.add_argument("--interval", type=int, help="Default check interval (seconds)")
@@ -324,6 +340,7 @@ def main():
         "watch": cmd_watch,
         "login": cmd_login,
         "profiles": cmd_profiles,
+        "web": cmd_web,
         "config": cmd_config,
     }
 
