@@ -43,6 +43,8 @@ product-monitor watch --interval 30
 | `list` | Show all watched products |
 | `check` | One-time availability check |
 | `watch` | Start continuous monitoring loop |
+| `login <retailer>` | Log in to a retailer (session saved for auto-cart) |
+| `profiles` | List or manage saved login sessions |
 | `config` | View or update settings |
 
 ## Adding Products
@@ -97,6 +99,31 @@ Install the browser automation dependencies:
 ```bash
 pip install -e ".[cart]"
 ```
+
+### Staying Logged In
+
+Most retailers require you to be logged in to add items to your cart. The monitor supports **persistent login sessions** — log in once, and your session is reused automatically:
+
+```bash
+# Step 1: Log in to retailers you care about (opens a browser)
+product-monitor login amazon
+product-monitor login bestbuy
+product-monitor login walmart
+
+# Step 2: Add products with auto-cart (will use your saved session)
+product-monitor add "RTX 5090" --auto-cart auto --retailers amazon bestbuy
+
+# See which retailers you're logged into
+product-monitor profiles
+
+# Clear a saved session
+product-monitor profiles --clear amazon
+
+# Clear all sessions
+product-monitor profiles --clear-all
+```
+
+Sessions are saved as Chrome browser profiles in `~/.product-monitor/profiles/<retailer>/`. They persist cookies, local storage, and login state across monitoring runs.
 
 **Note:** `open` mode works without Selenium (uses your default browser). `prompt` and `auto` modes require Selenium + Chrome/ChromeDriver. If Selenium isn't installed, the monitor falls back to opening the page in your browser.
 

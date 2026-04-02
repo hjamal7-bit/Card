@@ -9,12 +9,16 @@ from rich.table import Table
 
 from .config import (
     MonitorConfig,
+    PROFILES_DIR,
+    RETAILER_LOGIN_URLS,
     WatchEntry,
+    get_profile_dir,
     load_config,
     load_watches,
     save_config,
     save_watches,
 )
+from .cart import login_to_retailer
 from .monitor import run_monitor
 
 console = Console()
@@ -124,6 +128,84 @@ def cmd_watch(args):
     run_monitor(config)
 
 
+def cmd_login(args):
+    """Log in to a retailer and save the session for future auto-cart use."""
+    retailer = args.retailer.lower()
+
+    if retailer not in RETAILER_LOGIN_URLS and not retailer.startswith("http"):
+        console.print(f"[red]Unknown retailer '{retailer}'.[/red]")
+        console.print(f"[yellow]Valid retailers: {', '.join(RETAILER_LOGIN_URLS.keys())}[/yellow]")
+        console.print("[yellow]Or provide a full login URL.[/yellow]")
+        return
+
+    if retailer.startswith("http"):
+        login_url = retailer
+        retailer_key = "custom"
+    else:
+        login_url = RETAILER_LOGIN_URLS[retailer]
+        retailer_key = retailer
+
+    console.print(f"[cyan]Opening {retailer_key} login page...[/cyan]")
+    console.print("[dim]Log in normally in the browser window that opens.[/dim]")
+    console.print("[dim]Your session will be saved and reused for auto-cart.[/dim]\n")
+
+    result = login_to_retailer(retailer_key, login_url)
+
+    if result["success"]:
+        console.print(f"[green]{result['message']}[/green]")
+    else:
+        console.print(f"[red]{result['message']}[/red]")
+
+
+def cmd_profiles(args):
+    """List or manage saved login profiles."""
+    import shutil
+
+    if args.clear:
+        retailer = args.clear.lower()
+        profile = get_profile_dir(retailer)
+        if profile.exists() and any(profile.iterdir()):
+            shutil.rmtree(profile)
+            profile.mkdir(parents=True, exist_ok=True)
+            console.print(f"[green]Cleared login profile for '{retailer}'.[/green]")
+        else:
+            console.print(f"[yellow]No profile found for '{retailer}'.[/yellow]")
+        return
+
+    if args.clear_all:
+        if PROFILES_DIR.exists():
+            shutil.rmtree(PROFILES_DIR)
+            PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+            console.print("[green]All login profiles cleared.[/green]")
+        else:
+            console.print("[yellow]No profiles to clear.[/yellow]")
+        return
+
+    # List profiles
+    if not PROFILES_DIR.exists():
+        console.print("[yellow]No login profiles saved yet. Use 'product-monitor login <retailer>' first.[/yellow]")
+        return
+
+    table = Table(title="Saved Login Profiles")
+    table.add_column("Retailer", style="bold")
+    table.add_column("Profile Path")
+    table.add_column("Status")
+
+    found_any = False
+    for profile_dir in sorted(PROFILES_DIR.iterdir()):
+        if profile_dir.is_dir():
+            has_data = any(profile_dir.iterdir())
+            status = "[green]Active (logged in)[/green]" if has_data else "[dim]Empty[/dim]"
+            table.add_row(profile_dir.name, str(profile_dir), status)
+            found_any = True
+
+    if found_any:
+        console.print(table)
+        console.print("\n[dim]To clear a profile: product-monitor profiles --clear amazon[/dim]")
+    else:
+        console.print("[yellow]No login profiles saved yet. Use 'product-monitor login <retailer>' first.[/yellow]")
+
+
 def cmd_config(args):
     """View or update configuration."""
     config = load_config()
@@ -201,6 +283,21 @@ def main():
     watch_p = subparsers.add_parser("watch", help="Start continuous monitoring")
     watch_p.add_argument("--interval", "-i", type=int, help="Check interval in seconds (default: 60)")
 
+    # --- login ---
+    login_p = subparsers.add_parser(
+        "login",
+        help="Log in to a retailer (saves session for auto-cart)",
+    )
+    login_p.add_argument(
+        "retailer",
+        help=f"Retailer to log in to ({', '.join(RETAILER_LOGIN_URLS.keys())}) or a login page URL",
+    )
+
+    # --- profiles ---
+    prof_p = subparsers.add_parser("profiles", help="List or manage saved login profiles")
+    prof_p.add_argument("--clear", metavar="RETAILER", help="Clear saved profile for a specific retailer")
+    prof_p.add_argument("--clear-all", action="store_true", help="Clear all saved profiles")
+
     # --- config ---
     cfg_p = subparsers.add_parser("config", help="View or update settings")
     cfg_p.add_argument("--interval", type=int, help="Default check interval (seconds)")
@@ -225,6 +322,8 @@ def main():
         "list": cmd_list,
         "check": cmd_check,
         "watch": cmd_watch,
+        "login": cmd_login,
+        "profiles": cmd_profiles,
         "config": cmd_config,
     }
 

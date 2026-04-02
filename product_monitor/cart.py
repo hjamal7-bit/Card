@@ -4,7 +4,10 @@ Uses Selenium to open product pages in a real browser and attempt to click
 "Add to Cart" buttons automatically. Falls back to just opening the page
 if auto-click fails.
 
-Three modes:
+Supports persistent browser profiles so you can log in once and stay logged in
+across all future monitoring sessions.
+
+Three cart modes:
   - "open"    : Just open the product URL in a browser (safest)
   - "prompt"  : Open the page and highlight the button, wait for user
   - "auto"    : Attempt to click "Add to Cart" automatically
@@ -13,8 +16,10 @@ Three modes:
 import logging
 import time
 import webbrowser
+from pathlib import Path
 from typing import Optional
 
+from .config import PROFILES_DIR, get_profile_dir, get_retailer_for_url
 from .scrapers import ProductResult
 
 logger = logging.getLogger(__name__)
@@ -56,8 +61,14 @@ ADD_TO_CART_XPATHS = [
 ]
 
 
-def _get_driver(headless: bool = False):
-    """Create a Selenium WebDriver instance."""
+def _get_driver(headless: bool = False, profile_dir: Optional[Path] = None):
+    """Create a Selenium WebDriver instance, optionally with a persistent profile.
+
+    Args:
+        headless: Run browser without a visible window.
+        profile_dir: Path to a Chrome user data directory for session persistence.
+                     When set, cookies/logins/local storage survive between runs.
+    """
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.chrome.service import Service
@@ -65,6 +76,12 @@ def _get_driver(headless: bool = False):
     options = Options()
     if headless:
         options.add_argument("--headless=new")
+
+    # Persistent profile — this is what keeps you logged in
+    if profile_dir:
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        options.add_argument(f"--user-data-dir={profile_dir}")
+
     # Common anti-detection flags
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -73,11 +90,12 @@ def _get_driver(headless: bool = False):
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
+    # Avoid "Chrome is being controlled by automated test software" infobar
+    options.add_argument("--disable-infobars")
 
     try:
         driver = webdriver.Chrome(options=options)
     except Exception:
-        # Try with webdriver-manager as fallback
         try:
             from webdriver_manager.chrome import ChromeDriverManager
             service = Service(ChromeDriverManager().install())
@@ -95,11 +113,31 @@ def _get_driver(headless: bool = False):
     return driver
 
 
+def _resolve_profile_for_result(result: ProductResult) -> Optional[Path]:
+    """Find the right browser profile for a product result based on its retailer/URL."""
+    # Try matching by retailer name
+    retailer_key = result.retailer.lower().replace(" ", "")
+    profile = get_profile_dir(retailer_key)
+    if profile.exists() and any(profile.iterdir()):
+        return profile
+
+    # Try matching by URL
+    matched = get_retailer_for_url(result.url)
+    if matched:
+        profile = get_profile_dir(matched)
+        if profile.exists() and any(profile.iterdir()):
+            return profile
+
+    # Return the profile dir anyway (will be created on first use)
+    if matched:
+        return get_profile_dir(matched)
+    return get_profile_dir(retailer_key)
+
+
 def _find_add_to_cart_button(driver):
     """Find the add-to-cart button on the current page."""
     from selenium.webdriver.common.by import By
 
-    # Try CSS selectors first
     for selector in ADD_TO_CART_SELECTORS:
         try:
             elements = driver.find_elements(By.CSS_SELECTOR, selector)
@@ -109,7 +147,6 @@ def _find_add_to_cart_button(driver):
         except Exception:
             continue
 
-    # Fallback to XPath (text-based matching)
     for xpath in ADD_TO_CART_XPATHS:
         try:
             elements = driver.find_elements(By.XPATH, xpath)
@@ -146,8 +183,56 @@ def open_product_page(result: ProductResult) -> bool:
         return False
 
 
+def login_to_retailer(retailer: str, login_url: str) -> dict:
+    """Open a browser with a persistent profile so the user can log in.
+
+    The session is saved to ~/.product-monitor/profiles/<retailer>/ and will
+    be reused automatically by add_to_cart() in future runs.
+
+    Args:
+        retailer: Retailer key (e.g. "amazon", "bestbuy").
+        login_url: The retailer's login page URL.
+
+    Returns:
+        dict with keys: success (bool), profile_dir (str), message (str)
+    """
+    try:
+        from selenium.webdriver.support.ui import WebDriverWait
+    except ImportError:
+        return {
+            "success": False,
+            "profile_dir": "",
+            "message": "Selenium not installed. Install with: pip install selenium",
+        }
+
+    profile = get_profile_dir(retailer)
+
+    try:
+        driver = _get_driver(headless=False, profile_dir=profile)
+        driver.get(login_url)
+
+        return {
+            "success": True,
+            "profile_dir": str(profile),
+            "message": (
+                f"Browser opened to {retailer} login page.\n"
+                f"Log in normally — your session will be saved to:\n"
+                f"  {profile}\n\n"
+                f"When you're done, close the browser window.\n"
+                f"Future auto-cart actions for {retailer} will reuse this login."
+            ),
+        }
+    except RuntimeError as e:
+        return {"success": False, "profile_dir": "", "message": str(e)}
+    except Exception as e:
+        return {"success": False, "profile_dir": "", "message": f"Error: {e}"}
+
+
 def add_to_cart(result: ProductResult, mode: str = "auto", wait_seconds: int = 10) -> dict:
     """Attempt to add a product to cart using browser automation.
+
+    Uses a persistent browser profile (if available) so the user is already
+    logged in from a previous `product-monitor login` session.
 
     Args:
         result: The ProductResult to add to cart.
@@ -180,7 +265,10 @@ def add_to_cart(result: ProductResult, mode: str = "auto", wait_seconds: int = 1
 
     driver = None
     try:
-        driver = _get_driver(headless=False)
+        # Use persistent profile so the user is already logged in
+        profile = _resolve_profile_for_result(result)
+        logger.info(f"Using browser profile: {profile}")
+        driver = _get_driver(headless=False, profile_dir=profile)
         driver.get(result.url)
 
         # Wait for page to load
@@ -211,11 +299,9 @@ def add_to_cart(result: ProductResult, mode: str = "auto", wait_seconds: int = 1
 
         # mode == "auto"
         try:
-            # Scroll to button and click
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
             time.sleep(0.5)
             button.click()
-
             time.sleep(2)
 
             return {
@@ -227,7 +313,6 @@ def add_to_cart(result: ProductResult, mode: str = "auto", wait_seconds: int = 1
                 ),
             }
         except Exception as e:
-            # Click failed, try JavaScript click as fallback
             try:
                 driver.execute_script("arguments[0].click();", button)
                 time.sleep(2)
@@ -251,7 +336,6 @@ def add_to_cart(result: ProductResult, mode: str = "auto", wait_seconds: int = 1
                 }
 
     except RuntimeError as e:
-        # ChromeDriver not found
         logger.warning(str(e))
         opened = open_product_page(result)
         return {
@@ -268,6 +352,5 @@ def add_to_cart(result: ProductResult, mode: str = "auto", wait_seconds: int = 1
             "message": f"Automation error: {e}. Opened page in browser instead.",
         }
     finally:
-        # Don't close the browser — user needs it to complete checkout
-        if driver and mode == "open":
-            pass  # keep it open
+        # Never close the browser — user needs it to complete checkout
+        pass

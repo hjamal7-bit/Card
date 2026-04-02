@@ -9,6 +9,7 @@ from typing import Optional
 CONFIG_DIR = Path.home() / ".product-monitor"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 WATCHES_FILE = CONFIG_DIR / "watches.json"
+PROFILES_DIR = CONFIG_DIR / "profiles"
 
 
 @dataclass
@@ -55,8 +56,33 @@ class WatchEntry:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
+RETAILER_LOGIN_URLS = {
+    "amazon": "https://www.amazon.com/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2F",
+    "bestbuy": "https://www.bestbuy.com/identity/global/signin",
+    "walmart": "https://www.walmart.com/account/login",
+    "target": "https://www.target.com/login",
+    "newegg": "https://secure.newegg.com/identity/signin",
+}
+
+
 def ensure_config_dir():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_profile_dir(retailer: str) -> Path:
+    """Get the browser profile directory for a retailer."""
+    profile_dir = PROFILES_DIR / retailer.lower().replace(" ", "_")
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    return profile_dir
+
+
+def get_retailer_for_url(url: str) -> Optional[str]:
+    """Determine which retailer a URL belongs to, for profile matching."""
+    url_lower = url.lower()
+    for retailer in RETAILER_LOGIN_URLS:
+        if retailer in url_lower:
+            return retailer
+    return None
 
 
 def load_config() -> MonitorConfig:
