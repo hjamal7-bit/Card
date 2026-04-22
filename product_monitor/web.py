@@ -58,330 +58,579 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Product Availability Monitor</title>
+    <title>Product Monitor</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0f;
-            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: #f0f2f5;
+            color: #1a1a2e;
             min-height: 100vh;
         }
+
+        /* ── Header ── */
         .header {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            padding: 24px 32px;
-            border-bottom: 1px solid #2a2a4a;
+            background: #fff;
+            padding: 16px 28px;
+            border-bottom: 1px solid #e2e5ea;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        .header h1 {
-            font-size: 24px;
-            font-weight: 700;
-            color: #fff;
+        .header-left { display: flex; align-items: center; gap: 24px; }
+        .logo {
+            font-size: 22px;
+            font-weight: 800;
+            color: #1a1a2e;
+            letter-spacing: -0.5px;
         }
-        .header h1 span { color: #00d4aa; }
-        .header-status {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-        .status-dot {
-            width: 10px; height: 10px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        .status-dot.active { background: #00d4aa; animation: pulse 2s infinite; }
-        .status-dot.inactive { background: #666; }
-        @keyframes pulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(0,212,170,0.4); }
-            50% { box-shadow: 0 0 0 8px rgba(0,212,170,0); }
-        }
-        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-
-        .add-form {
-            background: #12121f;
-            border: 1px solid #2a2a4a;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 24px;
-            display: flex;
-            gap: 12px;
-            align-items: end;
-            flex-wrap: wrap;
-        }
-        .form-group { display: flex; flex-direction: column; gap: 4px; }
-        .form-group label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-        .form-group input, .form-group select {
-            background: #1a1a2e;
-            border: 1px solid #2a2a4a;
-            color: #fff;
-            padding: 10px 14px;
+        .logo span { color: #4f6ef7; }
+        .search-bar {
+            background: #f5f6f8;
+            border: 1px solid #e2e5ea;
             border-radius: 8px;
+            padding: 9px 16px;
             font-size: 14px;
+            color: #555;
+            width: 320px;
             outline: none;
-        }
-        .form-group input:focus { border-color: #00d4aa; }
-        .form-group input::placeholder { color: #555; }
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .btn-primary { background: #00d4aa; color: #000; }
-        .btn-primary:hover { background: #00f0c0; transform: translateY(-1px); }
-        .btn-danger { background: #ff4757; color: #fff; }
-        .btn-danger:hover { background: #ff6b7a; }
-        .btn-sm { padding: 6px 12px; font-size: 12px; }
-
-        .stats-bar {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .stat-card {
-            background: #12121f;
-            border: 1px solid #2a2a4a;
-            border-radius: 12px;
-            padding: 16px 20px;
-        }
-        .stat-card .label { font-size: 12px; color: #888; text-transform: uppercase; }
-        .stat-card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
-        .stat-card .value.green { color: #00d4aa; }
-        .stat-card .value.red { color: #ff4757; }
-        .stat-card .value.blue { color: #3b82f6; }
-
-        .watches-section h2 {
-            font-size: 18px;
-            margin-bottom: 16px;
-            color: #fff;
-        }
-        .product-grid {
-            display: grid;
-            gap: 12px;
-        }
-        .product-card {
-            background: #12121f;
-            border: 1px solid #2a2a4a;
-            border-radius: 12px;
-            padding: 16px 20px;
-            display: grid;
-            grid-template-columns: 1fr auto auto auto auto;
-            align-items: center;
-            gap: 16px;
             transition: border-color 0.2s;
         }
-        .product-card:hover { border-color: #3a3a5a; }
-        .product-card.available { border-left: 3px solid #00d4aa; }
-        .product-card.unavailable { border-left: 3px solid #ff4757; }
-        .product-card.unknown { border-left: 3px solid #ffa502; }
-        .product-name {
-            font-weight: 600;
-            font-size: 15px;
+        .search-bar:focus { border-color: #4f6ef7; background: #fff; }
+        .search-bar::placeholder { color: #aab0b8; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .header-nav {
+            display: flex;
+            gap: 4px;
         }
-        .product-name .retailer {
-            font-size: 12px;
-            color: #888;
-            font-weight: 400;
-            display: block;
-            margin-top: 2px;
-        }
-        .badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .badge-available { background: rgba(0,212,170,0.15); color: #00d4aa; }
-        .badge-unavailable { background: rgba(255,71,87,0.15); color: #ff4757; }
-        .badge-unknown { background: rgba(255,165,2,0.15); color: #ffa502; }
-        .price { font-size: 18px; font-weight: 700; color: #fff; }
-        .price.no-price { color: #555; font-size: 14px; }
-        a.buy-link {
-            color: #00d4aa;
+        .nav-tab {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #666;
             text-decoration: none;
+            cursor: pointer;
+            border: none;
+            background: none;
+            transition: all 0.15s;
+        }
+        .nav-tab:hover { background: #f0f2f5; color: #333; }
+        .nav-tab.active { background: #eef0ff; color: #4f6ef7; font-weight: 600; }
+        .btn-add-new {
+            background: #4f6ef7;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 9px 18px;
             font-size: 13px;
             font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
         }
-        a.buy-link:hover { text-decoration: underline; }
-
-        .watch-group {
-            margin-bottom: 32px;
-        }
-        .watch-header {
+        .btn-add-new:hover { background: #3b5bdb; }
+        .status-indicator {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
-            padding: 12px 16px;
-            background: #16213e;
-            border-radius: 8px;
+            gap: 6px;
+            font-size: 12px;
+            color: #888;
         }
-        .watch-query { font-size: 18px; font-weight: 700; color: #fff; }
-        .watch-meta { font-size: 13px; color: #888; }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #34d399;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+        }
 
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
+        /* ── Board ── */
+        .board {
+            display: flex;
+            gap: 16px;
+            padding: 20px 28px;
+            overflow-x: auto;
+            min-height: calc(100vh - 65px);
+            align-items: flex-start;
+        }
+
+        /* ── Columns ── */
+        .column {
+            min-width: 300px;
+            max-width: 340px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .col-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 4px;
+        }
+        .col-count {
+            background: #e8eaed;
             color: #555;
+            font-size: 13px;
+            font-weight: 700;
+            width: 28px; height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .empty-state h3 { color: #888; margin-bottom: 8px; }
+        .col-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #333;
+        }
+        .col-menu {
+            margin-left: auto;
+            color: #bbb;
+            cursor: pointer;
+            font-size: 18px;
+        }
 
-        .last-update { font-size: 12px; color: #555; }
+        /* ── Cards ── */
+        .card {
+            background: #fff;
+            border: 1px solid #e2e5ea;
+            border-radius: 10px;
+            padding: 14px 16px;
+            cursor: default;
+            transition: box-shadow 0.15s, border-color 0.15s;
+            position: relative;
+        }
+        .card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-color: #d0d3d8;
+        }
+        .card.highlight-green {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+        }
+        .card.highlight-yellow {
+            background: #fefce8;
+            border-color: #fde68a;
+        }
+        .card.highlight-red {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+        .card-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .card-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a2e;
+            line-height: 1.3;
+        }
+        .card-tags {
+            display: flex;
+            gap: 5px;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+        .tag {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .tag-retailer { background: #e8eaed; color: #555; }
+        .tag-available { background: #dcfce7; color: #166534; }
+        .tag-unavailable { background: #fee2e2; color: #991b1b; }
+        .tag-auto { background: #e0e7ff; color: #3730a3; }
+        .card-url {
+            font-size: 12px;
+            color: #4f6ef7;
+            text-decoration: none;
+            display: block;
+            margin-bottom: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .card-url:hover { text-decoration: underline; }
 
-        @media (max-width: 768px) {
-            .product-card {
-                grid-template-columns: 1fr;
-                gap: 8px;
-            }
-            .add-form { flex-direction: column; }
+        .card-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 2px;
+            border-top: 1px solid #f0f2f5;
+            padding-top: 10px;
+        }
+        .field-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: #aab0b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .field-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-top: 2px;
+        }
+        .field-value.muted { color: #ccc; }
+
+        .card-actions {
+            display: flex;
+            gap: 6px;
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .card:hover .card-actions { opacity: 1; }
+        .card-action-btn {
+            width: 28px; height: 28px;
+            border-radius: 6px;
+            border: 1px solid #e2e5ea;
+            background: #fff;
+            color: #888;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+        .card-action-btn:hover { background: #f5f6f8; color: #333; }
+
+        .card-event {
+            margin-top: 10px;
+            padding: 8px 10px;
+            background: #fefce8;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #854d0e;
+            font-weight: 500;
+        }
+        .card-event.success {
+            background: #f0fdf4;
+            color: #166534;
+        }
+
+        /* ── Add form modal ── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: #fff;
+            border-radius: 12px;
+            padding: 28px;
+            width: 460px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+        .modal h2 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #1a1a2e;
+        }
+        .modal .form-group {
+            margin-bottom: 14px;
+        }
+        .modal label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .modal input, .modal select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #e2e5ea;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #333;
+            outline: none;
+            background: #f9fafb;
+            transition: border-color 0.15s;
+        }
+        .modal input:focus, .modal select:focus {
+            border-color: #4f6ef7;
+            background: #fff;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        .btn-cancel {
+            padding: 9px 18px;
+            border-radius: 8px;
+            border: 1px solid #e2e5ea;
+            background: #fff;
+            color: #666;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .btn-cancel:hover { background: #f5f6f8; }
+
+        /* ── Empty state ── */
+        .empty-col {
+            padding: 32px 16px;
+            text-align: center;
+            color: #bbb;
+            font-size: 13px;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .board { padding: 12px; }
+            .column { min-width: 260px; }
+            .search-bar { width: 200px; }
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1><span>&#9679;</span> Product Availability Monitor</h1>
-        <div class="header-status">
-            <span class="last-update" id="lastUpdate">--</span>
-            <span class="status-dot active" id="statusDot"></span>
-            <span id="statusText" style="font-size:13px;">Monitoring</span>
+        <div class="header-left">
+            <div class="logo"><span>&#9670;</span> StockPulse</div>
+            <input type="text" class="search-bar" placeholder="Search products by name or retailer..." id="searchInput">
+        </div>
+        <div class="header-right">
+            <div class="header-nav">
+                <button class="nav-tab active">Board</button>
+                <button class="nav-tab" id="navWatches">Watches</button>
+            </div>
+            <button class="btn-add-new" onclick="openModal()">+ New Watch</button>
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span id="lastUpdate">Monitoring</span>
+            </div>
         </div>
     </div>
 
-    <div class="container">
-        <form class="add-form" method="POST" action="/add">
-            <div class="form-group" style="flex:2;">
-                <label>Product Name</label>
-                <input type="text" name="query" placeholder="e.g. Jordan 1, RTX 4090, AirPods Pro" required>
-            </div>
-            <div class="form-group">
-                <label>Max Price</label>
-                <input type="number" name="max_price" placeholder="Any" step="0.01" min="0">
-            </div>
-            <div class="form-group">
-                <label>Auto-Cart</label>
-                <select name="auto_cart">
-                    <option value="off">Off</option>
-                    <option value="open" selected>Open Page</option>
-                    <option value="prompt">Highlight Button</option>
-                    <option value="auto">Auto Click</option>
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary">+ Add Watch</button>
-        </form>
+    <div class="board" id="board">
+        <!-- Columns rendered by JS -->
+    </div>
 
-        <div class="stats-bar">
-            <div class="stat-card">
-                <div class="label">Watching</div>
-                <div class="value blue" id="statWatching">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">In Stock</div>
-                <div class="value green" id="statAvailable">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Out of Stock</div>
-                <div class="value red" id="statUnavailable">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Checks Run</div>
-                <div class="value" id="statChecks" style="color:#888;">0</div>
-            </div>
-        </div>
-
-        <div class="watches-section" id="watchesContainer">
-            <div class="empty-state" id="emptyState">
-                <h3>No products being monitored</h3>
-                <p>Add a product above to start watching for availability</p>
-            </div>
+    <!-- Add Watch Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <h2>Add New Watch</h2>
+            <form method="POST" action="/add">
+                <div class="form-group">
+                    <label>Product Name</label>
+                    <input type="text" name="query" placeholder="e.g. Jordan 1, RTX 4090, AirPods Pro" required>
+                </div>
+                <div class="form-group">
+                    <label>Max Price</label>
+                    <input type="number" name="max_price" placeholder="Any price" step="0.01" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Auto-Cart Mode</label>
+                    <select name="auto_cart">
+                        <option value="off">Off</option>
+                        <option value="open" selected>Open Page</option>
+                        <option value="prompt">Highlight Button</option>
+                        <option value="auto">Auto Click</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-add-new">Add Watch</button>
+                </div>
+            </form>
         </div>
     </div>
 
     <script>
+        function openModal() { document.getElementById('modalOverlay').classList.add('show'); }
+        function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+        document.getElementById('modalOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+
+        let searchFilter = '';
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            searchFilter = e.target.value.toLowerCase();
+            renderBoard(lastData);
+        });
+
+        let lastData = null;
+
         function fetchData() {
             fetch('/api/status')
                 .then(r => r.json())
                 .then(data => {
-                    document.getElementById('statWatching').textContent = data.watches.length;
-                    document.getElementById('statChecks').textContent = data.check_count;
+                    lastData = data;
                     if (data.last_check) {
-                        document.getElementById('lastUpdate').textContent = 'Last check: ' + data.last_check;
+                        document.getElementById('lastUpdate').textContent = 'Updated ' + data.last_check;
                     }
-
-                    let totalAvailable = 0;
-                    let totalUnavailable = 0;
-                    const container = document.getElementById('watchesContainer');
-                    const empty = document.getElementById('emptyState');
-
-                    if (data.watches.length === 0) {
-                        container.innerHTML = '';
-                        container.appendChild(empty);
-                        return;
-                    }
-
-                    let html = '';
-                    data.watches.forEach(watch => {
-                        const results = data.results[watch.query] || [];
-                        const avail = results.filter(r => r.available).length;
-                        const unavail = results.filter(r => !r.available).length;
-                        totalAvailable += avail;
-                        totalUnavailable += unavail;
-
-                        html += '<div class="watch-group">';
-                        html += '<div class="watch-header">';
-                        html += '<div>';
-                        html += '<span class="watch-query">' + escHtml(watch.query) + '</span>';
-                        html += '<span class="watch-meta"> &mdash; ' + results.length + ' results';
-                        if (watch.max_price) html += ' &bull; max $' + watch.max_price.toFixed(2);
-                        if (watch.auto_cart !== 'off') html += ' &bull; auto-cart: ' + watch.auto_cart;
-                        html += '</span>';
-                        html += '</div>';
-                        html += '<form method="POST" action="/remove" style="margin:0;"><input type="hidden" name="query" value="' + escAttr(watch.query) + '"><button class="btn btn-danger btn-sm" type="submit">Remove</button></form>';
-                        html += '</div>';
-
-                        html += '<div class="product-grid">';
-                        if (results.length === 0) {
-                            html += '<div class="product-card unknown"><div class="product-name">Searching...</div><div></div><div></div><div></div><div></div></div>';
-                        }
-                        results.forEach(r => {
-                            const cls = r.available ? 'available' : 'unavailable';
-                            const badgeCls = r.available ? 'badge-available' : 'badge-unavailable';
-                            const badgeText = r.available ? 'In Stock' : r.availability_text;
-                            const priceStr = r.price ? '$' + r.price.toFixed(2) : '--';
-                            const priceCls = r.price ? 'price' : 'price no-price';
-
-                            html += '<div class="product-card ' + cls + '">';
-                            html += '<div class="product-name">' + escHtml(r.name) + '<span class="retailer">' + escHtml(r.retailer) + '</span></div>';
-                            html += '<span class="badge ' + badgeCls + '">' + escHtml(badgeText) + '</span>';
-                            html += '<span class="' + priceCls + '">' + priceStr + '</span>';
-                            if (r.available) {
-                                html += '<a href="' + escAttr(r.url) + '" target="_blank" class="buy-link">Buy Now &rarr;</a>';
-                            } else {
-                                html += '<span></span>';
-                            }
-                            html += '</div>';
-                        });
-                        html += '</div></div>';
-                    });
-
-                    container.innerHTML = html;
-                    document.getElementById('statAvailable').textContent = totalAvailable;
-                    document.getElementById('statUnavailable').textContent = totalUnavailable;
+                    renderBoard(data);
                 });
         }
 
+        function renderBoard(data) {
+            if (!data) return;
+            const board = document.getElementById('board');
+
+            // Collect all results across all watches
+            let allResults = [];
+            data.watches.forEach(watch => {
+                const results = data.results[watch.query] || [];
+                results.forEach(r => {
+                    r._query = watch.query;
+                    r._auto_cart = watch.auto_cart;
+                    r._max_price = watch.max_price;
+                    allResults.push(r);
+                });
+            });
+
+            // Filter by search
+            if (searchFilter) {
+                allResults = allResults.filter(r =>
+                    r.name.toLowerCase().includes(searchFilter) ||
+                    r.retailer.toLowerCase().includes(searchFilter) ||
+                    r._query.toLowerCase().includes(searchFilter)
+                );
+            }
+
+            // Bucket into columns
+            const watching = data.watches;
+            const inStock = allResults.filter(r => r.available);
+            const outOfStock = allResults.filter(r => !r.available && r.availability_text !== 'notify me');
+            const waitlist = allResults.filter(r => !r.available && r.availability_text === 'notify me');
+
+            let html = '';
+
+            // ── Watchlist Column ──
+            html += buildColumn('Watchlist', watching.length, watching.map(w => {
+                const results = data.results[w.query] || [];
+                const avail = results.filter(r => r.available).length;
+                const total = results.length;
+                return cardWatch(w, avail, total);
+            }), '#4f6ef7');
+
+            // ── In Stock Column ──
+            html += buildColumn('In Stock', inStock.length, inStock.map(r => cardProduct(r, 'green')), '#22c55e');
+
+            // ── Out of Stock Column ──
+            html += buildColumn('Out of Stock', outOfStock.length, outOfStock.map(r => cardProduct(r, 'red')), '#ef4444');
+
+            // ── Waitlist Column ──
+            html += buildColumn('Waitlist', waitlist.length, waitlist.map(r => cardProduct(r, 'yellow')), '#f59e0b');
+
+            board.innerHTML = html;
+        }
+
+        function buildColumn(title, count, cards, color) {
+            let html = '<div class="column">';
+            html += '<div class="col-header">';
+            html += '<div class="col-count" style="background:' + color + '15; color:' + color + ';">' + count + '</div>';
+            html += '<div class="col-title">' + title + '</div>';
+            html += '<div class="col-menu">&#8943;</div>';
+            html += '</div>';
+            if (cards.length === 0) {
+                html += '<div class="empty-col">No items</div>';
+            } else {
+                html += cards.join('');
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function cardWatch(watch, avail, total) {
+            let cls = avail > 0 ? 'highlight-green' : '';
+            let html = '<div class="card ' + cls + '">';
+
+            html += '<div class="card-actions">';
+            html += '<form method="POST" action="/remove" style="margin:0;display:inline;">';
+            html += '<input type="hidden" name="query" value="' + escAttr(watch.query) + '">';
+            html += '<button type="submit" class="card-action-btn" title="Remove">&#128465;</button>';
+            html += '</form>';
+            html += '</div>';
+
+            html += '<div class="card-top">';
+            html += '<div class="card-name">' + escHtml(watch.query) + '</div>';
+            html += '<div class="card-tags">';
+            if (watch.auto_cart !== 'off') html += '<span class="tag tag-auto">' + escHtml(watch.auto_cart) + '</span>';
+            html += '</div>';
+            html += '</div>';
+
+            html += '<div class="card-fields">';
+            html += '<div><div class="field-label">Retailers</div><div class="field-value">' + watch.retailers.length + '</div></div>';
+            html += '<div><div class="field-label">Found</div><div class="field-value">' + total + '</div></div>';
+            html += '<div><div class="field-label">Max Price</div><div class="field-value ' + (watch.max_price ? '' : 'muted') + '">' + (watch.max_price ? '$' + watch.max_price.toFixed(0) : '&mdash;') + '</div></div>';
+            html += '</div>';
+
+            if (avail > 0) {
+                html += '<div class="card-event success">' + avail + ' item' + (avail > 1 ? 's' : '') + ' available now</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        function cardProduct(r, highlight) {
+            let cls = 'highlight-' + highlight;
+            let html = '<div class="card ' + cls + '">';
+
+            html += '<div class="card-actions">';
+            if (r.available && r.url) {
+                html += '<a href="' + escAttr(r.url) + '" target="_blank" class="card-action-btn" title="Open">&#8599;</a>';
+            }
+            html += '</div>';
+
+            html += '<div class="card-top">';
+            html += '<div class="card-name">' + escHtml(r.name) + '</div>';
+            html += '<div class="card-tags">';
+            html += '<span class="tag tag-retailer">' + escHtml(r.retailer) + '</span>';
+            html += '</div>';
+            html += '</div>';
+
+            html += '<a class="card-url" href="' + escAttr(r.url) + '" target="_blank">' + escHtml(r.url) + '</a>';
+
+            html += '<div class="card-fields">';
+            html += '<div><div class="field-label">Price</div><div class="field-value ' + (r.price ? '' : 'muted') + '">' + (r.price ? '$' + r.price.toFixed(2) : '&mdash;') + '</div></div>';
+            html += '<div><div class="field-label">Status</div><div class="field-value">' + escHtml(r.availability_text) + '</div></div>';
+            html += '<div><div class="field-label">Query</div><div class="field-value">' + escHtml(r._query) + '</div></div>';
+            html += '</div>';
+
+            if (r.available && r._auto_cart && r._auto_cart !== 'off') {
+                html += '<div class="card-event success">Auto-cart: ' + escHtml(r._auto_cart) + '</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
         function escHtml(s) {
+            if (!s) return '';
             const d = document.createElement('div');
             d.textContent = s;
             return d.innerHTML;
         }
         function escAttr(s) {
+            if (!s) return '';
             return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;');
         }
 
