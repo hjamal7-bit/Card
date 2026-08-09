@@ -1,6 +1,7 @@
 """Configuration management for product monitor."""
 
 import json
+import warnings
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
@@ -85,12 +86,32 @@ def get_retailer_for_url(url: str) -> Optional[str]:
     return None
 
 
+def _drop_unknown(raw: dict, cls, label: str) -> dict:
+    """Keep only keys ``cls`` declares, warning about each one dropped."""
+    known = cls.__dataclass_fields__
+    unknown = [k for k in raw if k not in known]
+    for k in unknown:
+        warnings.warn(
+            f"{CONFIG_FILE}: ignoring unknown {label} key {k!r} "
+            f"(not a field of {cls.__name__}); it will have no effect",
+            stacklevel=3,
+        )
+    return {k: v for k, v in raw.items() if k in known}
+
+
 def load_config() -> MonitorConfig:
     ensure_config_dir()
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE) as f:
             data = json.load(f)
         notif_data = data.pop("notifications", {})
+        # Drop keys the dataclasses do not define, so one stale or misspelled
+        # field in the config file cannot TypeError the whole monitor at start.
+        # Every drop is WARNED, never silent: a typo'd key that vanished
+        # quietly would run the monitor on defaults and look like a config
+        # that simply had no effect.
+        notif_data = _drop_unknown(notif_data, NotificationConfig, "notifications")
+        data = _drop_unknown(data, MonitorConfig, "config")
         return MonitorConfig(
             notifications=NotificationConfig(**notif_data),
             **data,

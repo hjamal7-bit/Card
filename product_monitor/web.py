@@ -656,6 +656,7 @@ def _run_background_checker():
                 monitor_state["results"][watch.query] = [r.to_dict() for r in filtered]
             except Exception as e:
                 monitor_state["errors"].append(str(e))
+                monitor_state["errors"] = monitor_state["errors"][-50:]
                 # If network fails, use demo data as fallback
                 if watch.query not in monitor_state["results"]:
                     demo = DEMO_RESULTS.get(watch.query, [])
@@ -701,7 +702,10 @@ def add_watch():
         return redirect(url_for("index"))
 
     max_price_str = request.form.get("max_price", "").strip()
-    max_price = float(max_price_str) if max_price_str else None
+    try:
+        max_price = float(max_price_str) if max_price_str else None
+    except ValueError:
+        max_price = None
     auto_cart = request.form.get("auto_cart", "off")
 
     watches = load_watches()
