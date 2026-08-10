@@ -50,16 +50,19 @@ def _get_session(config: MonitorConfig) -> requests.Session:
 
 def _fetch(url: str, config: MonitorConfig) -> Optional[str]:
     """Fetch a URL with retries, return HTML or None on failure."""
-    session = _get_session(config)
-    for attempt in range(config.max_retries):
-        try:
-            resp = session.get(url, timeout=config.request_timeout_seconds, allow_redirects=True)
-            resp.raise_for_status()
-            return resp.text
-        except requests.RequestException as e:
-            logger.debug(f"Attempt {attempt + 1} failed for {url}: {e}")
-            if attempt < config.max_retries - 1:
-                time.sleep(2 ** (attempt + 1))
+    # requests.Session owns a connection pool; a per-call session that is never
+    # closed leaks sockets for the lifetime of the monitor thread, and this runs
+    # once per watch per check interval.
+    with _get_session(config) as session:
+        for attempt in range(config.max_retries):
+            try:
+                resp = session.get(url, timeout=config.request_timeout_seconds, allow_redirects=True)
+                resp.raise_for_status()
+                return resp.text
+            except requests.RequestException as e:
+                logger.debug(f"Attempt {attempt + 1} failed for {url}: {e}")
+                if attempt < config.max_retries - 1:
+                    time.sleep(2 ** (attempt + 1))
     return None
 
 

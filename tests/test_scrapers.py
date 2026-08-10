@@ -116,3 +116,52 @@ class TestProductResultDict:
         assert d["name"] == "Test"
         assert d["price"] == 9.99
         assert d["available"] is True
+
+
+def test_fetch_closes_its_session(monkeypatch):
+    """Regression (2026-08-10): _fetch built a Session per call and never closed
+    it, leaking a connection pool on every price check."""
+    import product_monitor.scrapers as sc
+
+    closed = {"n": 0}
+
+    class _Resp:
+        text = "<html>ok</html>"
+        def raise_for_status(self):
+            return None
+
+    class _Session:
+        def __enter__(self):
+            return self
+        def __exit__(self, *exc):
+            closed["n"] += 1
+            return False
+        def get(self, *a, **kw):
+            return _Resp()
+
+    monkeypatch.setattr(sc, "_get_session", lambda config: _Session())
+    cfg = type("C", (), {"max_retries": 3, "request_timeout_seconds": 5})()
+    assert sc._fetch("https://example.invalid/p", cfg) == "<html>ok</html>"
+    assert closed["n"] == 1, "session was not closed"
+
+
+def test_fetch_closes_its_session_even_when_every_attempt_fails(monkeypatch):
+    import requests
+    import product_monitor.scrapers as sc
+
+    closed = {"n": 0}
+
+    class _Session:
+        def __enter__(self):
+            return self
+        def __exit__(self, *exc):
+            closed["n"] += 1
+            return False
+        def get(self, *a, **kw):
+            raise requests.RequestException("boom")
+
+    monkeypatch.setattr(sc, "_get_session", lambda config: _Session())
+    monkeypatch.setattr(sc.time, "sleep", lambda *_: None)
+    cfg = type("C", (), {"max_retries": 2, "request_timeout_seconds": 5})()
+    assert sc._fetch("https://example.invalid/p", cfg) is None
+    assert closed["n"] == 1

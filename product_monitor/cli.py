@@ -139,7 +139,9 @@ def cmd_login(args):
         return
 
     if retailer.startswith("http"):
-        login_url = retailer
+        # `retailer` is args.retailer.lower(); URL paths and query strings are
+        # case-sensitive, so the lowercased copy is only safe for the key lookup.
+        login_url = args.retailer
         retailer_key = "custom"
     else:
         login_url = RETAILER_LOGIN_URLS[retailer]

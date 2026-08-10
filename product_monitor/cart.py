@@ -207,6 +207,7 @@ def login_to_retailer(retailer: str, login_url: str) -> dict:
 
     profile = get_profile_dir(retailer)
 
+    driver = None
     try:
         driver = _get_driver(headless=False, profile_dir=profile)
         driver.get(login_url)
@@ -225,6 +226,10 @@ def login_to_retailer(retailer: str, login_url: str) -> dict:
     except RuntimeError as e:
         return {"success": False, "profile_dir": "", "message": str(e)}
     except Exception as e:
+        # A headed Chrome survives the failed login otherwise, one orphan window
+        # per attempt, and the profile dir stays locked against the next try.
+        if driver is not None:
+            driver.quit()
         return {"success": False, "profile_dir": "", "message": f"Error: {e}"}
 
 
