@@ -99,14 +99,16 @@ class TestCorruptFiles:
         assert any("invalid JSON" in str(w.message) for w in caught)
         assert any("config.json" in str(w.message) for w in caught)
 
-    def test_corrupt_config_is_not_overwritten(self, tmp_config_dir):
+    def test_corrupt_config_is_moved_aside_not_overwritten(self, tmp_config_dir):
         config_file = tmp_config_dir / "config.json"
         config_file.write_text("{not json at all")
 
         with pytest.warns(UserWarning):
             load_config()
 
-        assert config_file.read_text() == "{not json at all"
+        kept = list(tmp_config_dir.glob("config.json.corrupt-*"))
+        assert len(kept) == 1, kept
+        assert kept[0].read_text() == "{not json at all"
 
     def test_truncated_watches_falls_back_to_empty(self, tmp_config_dir):
         watches_file = tmp_config_dir / "watches.json"
@@ -125,6 +127,132 @@ class TestCorruptFiles:
 
         with pytest.warns(UserWarning):
             assert load_watches() == []
+
+
+class TestCorruptFilesArePreserved:
+    """The fallback must not become the thing that destroys the data.
+
+    Both loaders return defaults so a bad file cannot take the tool down, and
+    the very next command saves those defaults back over the file. Renaming
+    the bad copy aside first is what keeps that fallback non fatal.
+    """
+
+    CORRUPT_WATCHES = (
+        '[{"query": "PS5", "retailers": ["amazon"], "enabled": true},\n'
+        ' {"query": "RTX 4090", "retailers": ["neweg'
+    )
+
+    def _corrupt_copies(self, tmp_config_dir, name):
+        return sorted(tmp_config_dir.glob(f"{name}.corrupt-*"))
+
+    def test_corrupt_watches_are_preserved_and_load_returns_empty(self, tmp_config_dir):
+        watches_file = tmp_config_dir / "watches.json"
+        watches_file.write_text(self.CORRUPT_WATCHES)
+
+        with pytest.warns(UserWarning):
+            assert load_watches() == []
+
+        kept = self._corrupt_copies(tmp_config_dir, "watches.json")
+        assert len(kept) == 1, kept
+        assert kept[0].read_text() == self.CORRUPT_WATCHES
+        assert not watches_file.exists()
+
+    def test_warning_names_the_path_the_copy_was_kept_at(self, tmp_config_dir):
+        (tmp_config_dir / "watches.json").write_text(self.CORRUPT_WATCHES)
+
+        with pytest.warns(UserWarning) as caught:
+            load_watches()
+
+        kept = self._corrupt_copies(tmp_config_dir, "watches.json")[0]
+        messages = [str(w.message) for w in caught]
+        assert any(str(kept) in m for m in messages), messages
+        assert any("preserved at" in m for m in messages), messages
+
+    def test_later_save_does_not_destroy_the_preserved_watches(self, tmp_config_dir):
+        """The exact sequence `product-monitor list` then `add` used to run."""
+        watches_file = tmp_config_dir / "watches.json"
+        watches_file.write_text(self.CORRUPT_WATCHES)
+
+        with pytest.warns(UserWarning):
+            watches = load_watches()
+        watches.append(WatchEntry(query="Nintendo Switch 2"))
+        save_watches(watches)
+
+        kept = self._corrupt_copies(tmp_config_dir, "watches.json")
+        assert len(kept) == 1, kept
+        assert kept[0].read_text() == self.CORRUPT_WATCHES
+        assert [w.query for w in load_watches()] == ["Nintendo Switch 2"]
+
+    def test_later_save_does_not_destroy_the_preserved_config(self, tmp_config_dir):
+        """`product-monitor config` loads then unconditionally saves."""
+        config_file = tmp_config_dir / "config.json"
+        original = '{"check_interval_seconds": 300, "notifications": {"smtp_user": "me@exa'
+        config_file.write_text(original)
+
+        with pytest.warns(UserWarning):
+            config = load_config()
+        save_config(config)
+
+        kept = self._corrupt_copies(tmp_config_dir, "config.json")
+        assert len(kept) == 1, kept
+        assert kept[0].read_text() == original
+        assert load_config().check_interval_seconds == 60
+
+    def test_repeated_reads_of_one_corruption_keep_one_copy(self, tmp_config_dir):
+        """Reading twice must not spew a copy per read: the file is gone now."""
+        (tmp_config_dir / "watches.json").write_text(self.CORRUPT_WATCHES)
+
+        with pytest.warns(UserWarning):
+            load_watches()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            # Nothing left to warn about: an absent file is a clean empty state.
+            assert load_watches() == []
+
+        assert len(self._corrupt_copies(tmp_config_dir, "watches.json")) == 1
+
+    def test_a_second_corruption_gets_its_own_copy(self, tmp_config_dir):
+        watches_file = tmp_config_dir / "watches.json"
+        watches_file.write_text(self.CORRUPT_WATCHES)
+        with pytest.warns(UserWarning):
+            load_watches()
+
+        save_watches([WatchEntry(query="Steam Deck")])
+        watches_file.write_text('[{"query": "Steam D')
+        with pytest.warns(UserWarning):
+            load_watches()
+
+        kept = self._corrupt_copies(tmp_config_dir, "watches.json")
+        assert len(kept) == 2, kept
+        assert {p.read_text() for p in kept} == {
+            self.CORRUPT_WATCHES,
+            '[{"query": "Steam D',
+        }
+
+    def test_two_corruptions_in_one_second_do_not_clobber_each_other(self, tmp_config_dir):
+        watches_file = tmp_config_dir / "watches.json"
+        with patch("product_monitor.config.time.time", return_value=1_700_000_000):
+            watches_file.write_text("first")
+            with pytest.warns(UserWarning):
+                load_watches()
+            watches_file.write_text("second")
+            with pytest.warns(UserWarning):
+                load_watches()
+
+        kept = self._corrupt_copies(tmp_config_dir, "watches.json")
+        assert len(kept) == 2, kept
+        assert {p.read_text() for p in kept} == {"first", "second"}
+
+    def test_unmovable_file_still_loads_and_says_the_data_is_at_risk(self, tmp_config_dir):
+        (tmp_config_dir / "watches.json").write_text(self.CORRUPT_WATCHES)
+
+        with patch("product_monitor.config.Path.rename", side_effect=OSError("read-only")):
+            with pytest.warns(UserWarning) as caught:
+                assert load_watches() == []
+
+        messages = [str(w.message) for w in caught]
+        assert any("could NOT be moved aside" in m for m in messages), messages
+        assert self._corrupt_copies(tmp_config_dir, "watches.json") == []
 
 
 class TestUnknownKeys:

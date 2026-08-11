@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 import warnings
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -120,21 +121,64 @@ def _atomic_write_json(path: Path, payload) -> None:
         tmp.unlink(missing_ok=True)
 
 
+def _preserve_corrupt(path: Path) -> Optional[Path]:
+    """Move an unparseable file aside, returning where it was kept.
+
+    Both loaders fall back to defaults so one bad file cannot take the CLI
+    and the dashboard down. That fallback is exactly what the next save
+    writes back, though, so leaving the bad file in place meant a single
+    corrupt read destroyed it: ``product-monitor add`` would overwrite every
+    watch the user had with the one it just created. Renaming first keeps the
+    original bytes, which are often hand repairable, and leaves the real path
+    absent, which is a clean empty state instead of a broken one.
+
+    That absence is also what bounds the ``.corrupt-*`` files: the next read
+    finds nothing to preserve, so a second copy only ever appears after a
+    second, genuinely different corruption. Old copies are never pruned,
+    since deleting them would reintroduce the data loss this prevents.
+
+    Returns ``None`` if the file could not be moved, so the caller can say so.
+    """
+    stamp = int(time.time())
+    kept = path.with_name(f"{path.name}.corrupt-{stamp}")
+    attempt = 2
+    while kept.exists():
+        # Two corrupt reads inside the same second must not clobber each other.
+        kept = path.with_name(f"{path.name}.corrupt-{stamp}-{attempt}")
+        attempt += 1
+    try:
+        path.rename(kept)
+    except OSError:
+        return None
+    return kept
+
+
+def _corrupt_file_note(path: Path) -> str:
+    """Preserve ``path`` and describe the outcome for a warning message."""
+    kept = _preserve_corrupt(path)
+    if kept is None:
+        return f"the unreadable file could NOT be moved aside, so the next save will overwrite {path}"
+    return f"the unreadable file was preserved at {kept}"
+
+
 def load_config() -> MonitorConfig:
     ensure_config_dir()
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE) as f:
-            try:
+        try:
+            with open(CONFIG_FILE) as f:
                 data = json.load(f)
-            except json.JSONDecodeError as e:
-                # A corrupt or truncated config file used to abort the CLI and
-                # the web dashboard on import. Defaults keep both usable; the
-                # bad file is left alone so it can be inspected or repaired.
-                warnings.warn(
-                    f"{CONFIG_FILE}: invalid JSON ({e}); using default configuration",
-                    stacklevel=2,
-                )
-                return MonitorConfig()
+        except json.JSONDecodeError as e:
+            # A corrupt or truncated config file used to abort the CLI and
+            # the web dashboard on import. Defaults keep both usable, but
+            # `product-monitor config` saves whatever load_config handed back,
+            # so the bad file has to be moved out of the way first or that
+            # save erases it (smtp credentials included).
+            note = _corrupt_file_note(CONFIG_FILE)
+            warnings.warn(
+                f"{CONFIG_FILE}: invalid JSON ({e}); using default configuration, {note}",
+                stacklevel=2,
+            )
+            return MonitorConfig()
         notif_data = data.pop("notifications", {})
         # Drop keys the dataclasses do not define, so one stale or misspelled
         # field in the config file cannot TypeError the whole monitor at start.
@@ -160,19 +204,20 @@ def save_config(config: MonitorConfig):
 def load_watches() -> list[WatchEntry]:
     ensure_config_dir()
     if WATCHES_FILE.exists():
-        with open(WATCHES_FILE) as f:
-            try:
+        try:
+            with open(WATCHES_FILE) as f:
                 data = json.load(f)
-            except json.JSONDecodeError as e:
-                # One bad write used to crash every add/list/check/watch/web
-                # call. An empty list keeps the tool running. Note the next
-                # command that saves watches will overwrite the unreadable
-                # file, so repair it before adding or removing a watch.
-                warnings.warn(
-                    f"{WATCHES_FILE}: invalid JSON ({e}); treating watch list as empty",
-                    stacklevel=2,
-                )
-                return []
+        except json.JSONDecodeError as e:
+            # One bad write used to crash every add/list/check/watch/web call.
+            # An empty list keeps the tool running, but the next add or remove
+            # saves that empty list straight over the file, so the bad copy is
+            # moved aside before the fallback is handed back.
+            note = _corrupt_file_note(WATCHES_FILE)
+            warnings.warn(
+                f"{WATCHES_FILE}: invalid JSON ({e}); treating watch list as empty, {note}",
+                stacklevel=2,
+            )
+            return []
         return [WatchEntry.from_dict(w) for w in data]
     return []
 
