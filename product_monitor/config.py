@@ -1,6 +1,7 @@
 """Configuration management for product monitor."""
 
 import json
+import os
 import warnings
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -99,11 +100,41 @@ def _drop_unknown(raw: dict, cls, label: str) -> dict:
     return {k: v for k, v in raw.items() if k in known}
 
 
+def _atomic_write_json(path: Path, payload) -> None:
+    """Serialize ``payload`` to ``path`` as JSON, all at once or not at all.
+
+    ``open(path, "w")`` truncates before it writes, so an interrupted save
+    (crash, kill, full disk) leaves a half-written file that no longer parses.
+    Writing a sibling temp file and renaming it over the target keeps the
+    reader looking at either the old file or the complete new one.
+    """
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(payload, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        # No-op on the success path: os.replace already consumed the temp file.
+        tmp.unlink(missing_ok=True)
+
+
 def load_config() -> MonitorConfig:
     ensure_config_dir()
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE) as f:
-            data = json.load(f)
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError as e:
+                # A corrupt or truncated config file used to abort the CLI and
+                # the web dashboard on import. Defaults keep both usable; the
+                # bad file is left alone so it can be inspected or repaired.
+                warnings.warn(
+                    f"{CONFIG_FILE}: invalid JSON ({e}); using default configuration",
+                    stacklevel=2,
+                )
+                return MonitorConfig()
         notif_data = data.pop("notifications", {})
         # Drop keys the dataclasses do not define, so one stale or misspelled
         # field in the config file cannot TypeError the whole monitor at start.
@@ -123,20 +154,29 @@ def load_config() -> MonitorConfig:
 
 def save_config(config: MonitorConfig):
     ensure_config_dir()
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(asdict(config), f, indent=2)
+    _atomic_write_json(CONFIG_FILE, asdict(config))
 
 
 def load_watches() -> list[WatchEntry]:
     ensure_config_dir()
     if WATCHES_FILE.exists():
         with open(WATCHES_FILE) as f:
-            data = json.load(f)
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError as e:
+                # One bad write used to crash every add/list/check/watch/web
+                # call. An empty list keeps the tool running. Note the next
+                # command that saves watches will overwrite the unreadable
+                # file, so repair it before adding or removing a watch.
+                warnings.warn(
+                    f"{WATCHES_FILE}: invalid JSON ({e}); treating watch list as empty",
+                    stacklevel=2,
+                )
+                return []
         return [WatchEntry.from_dict(w) for w in data]
     return []
 
 
 def save_watches(watches: list[WatchEntry]):
     ensure_config_dir()
-    with open(WATCHES_FILE, "w") as f:
-        json.dump([w.to_dict() for w in watches], f, indent=2)
+    _atomic_write_json(WATCHES_FILE, [w.to_dict() for w in watches])

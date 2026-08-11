@@ -8,7 +8,7 @@ from datetime import datetime
 from rich.console import Console
 from rich.table import Table
 
-from .cart import add_to_cart, open_product_page
+from .cart import add_to_cart
 from .config import MonitorConfig, WatchEntry, load_watches, save_watches
 from .notifier import send_notifications
 from .scrapers import ProductResult, filter_results, search_product

@@ -1,10 +1,9 @@
 """Web dashboard for Product Availability Monitor."""
 
-import json
+import math
 import threading
 import time
 from datetime import datetime
-from dataclasses import asdict
 
 from flask import Flask, render_template_string, jsonify, request, redirect, url_for
 
@@ -401,6 +400,15 @@ HTML_TEMPLATE = """
             font-size: 13px;
         }
 
+        /* ── Form error banner ── */
+        .form-error {
+            background: #fdecea;
+            border-bottom: 1px solid #f5c2bd;
+            color: #8c1d13;
+            font-size: 14px;
+            padding: 12px 28px;
+        }
+
         /* ── Responsive ── */
         @media (max-width: 900px) {
             .board { padding: 12px; }
@@ -410,6 +418,9 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
+    {% if error_message %}
+    <div class="form-error">{{ error_message }}</div>
+    {% endif %}
     <div class="header">
         <div class="header-left">
             <div class="logo"><span>&#9670;</span> StockPulse</div>
@@ -672,9 +683,19 @@ def _run_background_checker():
             time.sleep(0.5)
 
 
+# Fixed server-side text per error code. The redirect only ever carries the
+# code, so nothing a caller supplies is echoed back into the page.
+FORM_ERRORS = {
+    "bad_price": "Max price must be a number, for example 1200 or 1200.50. The watch was not added.",
+}
+
+
 @app.route("/")
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    return render_template_string(
+        HTML_TEMPLATE,
+        error_message=FORM_ERRORS.get(request.args.get("error", "")),
+    )
 
 
 @app.route("/api/status")
@@ -705,7 +726,15 @@ def add_watch():
     try:
         max_price = float(max_price_str) if max_price_str else None
     except ValueError:
-        max_price = None
+        # Falling back to None would mean "no price cap at all", which is the
+        # opposite of what someone typing a price wants, and with auto_cart set
+        # to "auto" it would let the monitor act on an item at any price.
+        # Refuse the add and say why instead.
+        return redirect(url_for("index", error="bad_price"))
+    # float() also accepts "nan" and "inf". A NaN cap silently matches nothing,
+    # and both serialize into watches.json as tokens no strict JSON reader takes.
+    if max_price is not None and not math.isfinite(max_price):
+        return redirect(url_for("index", error="bad_price"))
     auto_cart = request.form.get("auto_cart", "off")
 
     watches = load_watches()

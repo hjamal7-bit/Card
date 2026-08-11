@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
@@ -79,3 +80,119 @@ class TestWatchEntry:
 
     def test_load_empty(self, tmp_config_dir):
         assert load_watches() == []
+
+
+class TestCorruptFiles:
+    """A half-written JSON file must not take the whole tool down."""
+
+    def test_truncated_config_falls_back_to_defaults(self, tmp_config_dir):
+        config_file = tmp_config_dir / "config.json"
+        save_config(MonitorConfig(check_interval_seconds=30))
+        # Simulate an interrupted write: valid prefix, no closing brace.
+        config_file.write_text(config_file.read_text()[:40])
+
+        with pytest.warns(UserWarning) as caught:
+            config = load_config()
+
+        assert config.check_interval_seconds == 60
+        assert config.notifications.desktop is True
+        assert any("invalid JSON" in str(w.message) for w in caught)
+        assert any("config.json" in str(w.message) for w in caught)
+
+    def test_corrupt_config_is_not_overwritten(self, tmp_config_dir):
+        config_file = tmp_config_dir / "config.json"
+        config_file.write_text("{not json at all")
+
+        with pytest.warns(UserWarning):
+            load_config()
+
+        assert config_file.read_text() == "{not json at all"
+
+    def test_truncated_watches_falls_back_to_empty(self, tmp_config_dir):
+        watches_file = tmp_config_dir / "watches.json"
+        save_watches([WatchEntry(query="PS5"), WatchEntry(query="RTX 4090")])
+        watches_file.write_text(watches_file.read_text()[:30])
+
+        with pytest.warns(UserWarning) as caught:
+            watches = load_watches()
+
+        assert watches == []
+        assert any("invalid JSON" in str(w.message) for w in caught)
+        assert any("watches.json" in str(w.message) for w in caught)
+
+    def test_empty_watches_file_falls_back_to_empty(self, tmp_config_dir):
+        (tmp_config_dir / "watches.json").write_text("")
+
+        with pytest.warns(UserWarning):
+            assert load_watches() == []
+
+
+class TestUnknownKeys:
+    """Unknown keys are tolerated, but never silently."""
+
+    def test_unknown_config_key_is_named_in_the_warning(self, tmp_config_dir):
+        (tmp_config_dir / "config.json").write_text(
+            json.dumps({"check_interval_seconds": 45, "chek_intervl": 999})
+        )
+
+        with pytest.warns(UserWarning) as caught:
+            config = load_config()
+
+        messages = [str(w.message) for w in caught]
+        assert config.check_interval_seconds == 45
+        assert any("chek_intervl" in m for m in messages), messages
+        assert not any("check_interval_seconds'" in m for m in messages), messages
+
+    def test_unknown_notification_key_is_named_in_the_warning(self, tmp_config_dir):
+        (tmp_config_dir / "config.json").write_text(
+            json.dumps({"notifications": {"desktop": False, "emial": "typo@example.com"}})
+        )
+
+        with pytest.warns(UserWarning) as caught:
+            config = load_config()
+
+        assert config.notifications.desktop is False
+        assert any("emial" in str(w.message) for w in caught)
+
+    def test_known_keys_only_warns_about_nothing(self, tmp_config_dir):
+        save_config(MonitorConfig(check_interval_seconds=15))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert load_config().check_interval_seconds == 15
+
+
+class TestAtomicWrites:
+    """Saves swap the file in one step, so a failed save cannot truncate it."""
+
+    def test_failed_save_leaves_previous_watches_intact(self, tmp_config_dir):
+        watches_file = tmp_config_dir / "watches.json"
+        save_watches([WatchEntry(query="PS5")])
+        before = watches_file.read_text()
+
+        # object() is not JSON serializable, so the write dies partway through.
+        with pytest.raises(TypeError):
+            save_watches([WatchEntry(query="PS5", last_results=[{"bad": object()}])])
+
+        assert watches_file.read_text() == before
+        assert load_watches()[0].query == "PS5"
+
+    def test_failed_save_leaves_previous_config_intact(self, tmp_config_dir):
+        config_file = tmp_config_dir / "config.json"
+        save_config(MonitorConfig(check_interval_seconds=30))
+        before = config_file.read_text()
+
+        broken = MonitorConfig()
+        broken.max_retries = object()
+        with pytest.raises(TypeError):
+            save_config(broken)
+
+        assert config_file.read_text() == before
+
+    def test_no_temp_files_are_left_behind(self, tmp_config_dir):
+        save_config(MonitorConfig())
+        save_watches([WatchEntry(query="PS5")])
+        with pytest.raises(TypeError):
+            save_watches([WatchEntry(query="PS5", last_results=[{"bad": object()}])])
+
+        assert list(tmp_config_dir.glob("*.tmp")) == []
