@@ -132,3 +132,16 @@ class TestSelectors:
             assert isinstance(s, str)
         for x in ADD_TO_CART_XPATHS:
             assert isinstance(x, str)
+
+
+class TestAddToCartInvalidMode:
+    def test_unknown_mode_takes_no_action(self):
+        result = _make_result()
+        out = add_to_cart(result, mode="autoo")
+        assert out["success"] is False
+        assert out["action"] == "invalid_mode"
+
+    @patch("product_monitor.cart.open_product_page")
+    def test_unknown_mode_never_opens_browser(self, mock_open):
+        add_to_cart(_make_result(), mode="")
+        mock_open.assert_not_called()

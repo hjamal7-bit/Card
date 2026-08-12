@@ -255,6 +255,17 @@ def add_to_cart(result: ProductResult, mode: str = "auto", wait_seconds: int = 1
             "message": f"Opened {result.url} in your browser" if opened else "Failed to open browser",
         }
 
+    if mode not in ("prompt", "auto"):
+        # An unrecognized mode (e.g. a corrupted/hand-edited watches.json
+        # entry) must not silently fall through to "auto" below, which
+        # clicks the real Add to Cart button on the retailer's site.
+        logger.warning(f"Unknown cart mode '{mode}', not taking any cart action")
+        return {
+            "success": False,
+            "action": "invalid_mode",
+            "message": f"Unknown cart mode '{mode}'. Valid modes: open, prompt, auto.",
+        }
+
     # Modes "prompt" and "auto" need Selenium
     try:
         from selenium.webdriver.support.ui import WebDriverWait

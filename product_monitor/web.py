@@ -18,6 +18,11 @@ from .scrapers import ProductResult, filter_results, search_product
 
 app = Flask(__name__)
 
+# Keep in sync with cli.py's VALID_CART_MODES. "auto" clicks the real
+# add-to-cart button on the retailer's site, so an unrecognized/tampered
+# form value must never be allowed to fall through to that behavior.
+VALID_CART_MODES = ("off", "open", "prompt", "auto")
+
 # In-memory state for the dashboard
 monitor_state = {
     "running": False,
@@ -736,6 +741,11 @@ def add_watch():
     if max_price is not None and not math.isfinite(max_price):
         return redirect(url_for("index", error="bad_price"))
     auto_cart = request.form.get("auto_cart", "off")
+    if auto_cart not in VALID_CART_MODES:
+        # Unlike the CLI (argparse choices=VALID_CART_MODES), this form field
+        # isn't validated by the framework, so reject anything unrecognized
+        # rather than persisting it — "auto" auto-clicks Add to Cart for real.
+        auto_cart = "off"
 
     watches = load_watches()
     for w in watches:
